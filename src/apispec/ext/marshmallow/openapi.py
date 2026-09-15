@@ -395,11 +395,18 @@ class OpenAPIConverter(FieldConverterMixin):
             base_instance = resolve_schema_instance(base_class)
             base_ref = self.get_ref_dict(base_instance)
 
-            # Get fields unique to this child (not in base)
-            base_instance = resolve_schema_instance(base_class)
-            base_fields = set(get_fields(base_instance).keys())
+            # Get fields unique to this child (not in base), or fields the
+            # child redeclares itself to override the base's definition
+            # (e.g. narrowing `type` to a single value via validate.Equal).
+            # get_fields() deep-copies its result, so the override check has
+            # to compare the underlying _declared_fields, not that copy.
+            base_declared = base_instance.__class__._declared_fields
+            child_declared = schema_instance.__class__._declared_fields
             child_fields = get_fields(schema_instance)
-            unique_fields = {k: v for k, v in child_fields.items() if k not in base_fields}
+            unique_fields = {
+                k: v for k, v in child_fields.items()
+                if k not in base_declared or child_declared[k] is not base_declared[k]
+            }
 
             # Build the allOf structure
             # fields2jsonschema returns a complete schema with type, properties, and required
